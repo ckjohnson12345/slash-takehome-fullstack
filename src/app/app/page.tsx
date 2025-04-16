@@ -177,9 +177,11 @@ export default function AppPage() {
             </Avatar>
           </DropdownMenuTrigger>
           <DropdownMenuContent>
-            <DropdownMenuItem>
-              <Link href="/admin">Admin</Link>
-            </DropdownMenuItem>
+            <Link href="/admin">
+              <DropdownMenuItem className="cursor-pointer">
+                Admin
+              </DropdownMenuItem>
+            </Link>
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
