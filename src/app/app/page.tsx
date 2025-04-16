@@ -265,7 +265,10 @@ export default function AppPage() {
                     <td className="py-2">
                       {new Date(transaction.createdAt).toLocaleDateString()}
                     </td>
-                    <td className="py-2 overflow-hidden text-ellipsis whitespace-nowrap">
+                    <td
+                      className="py-2 overflow-hidden text-ellipsis whitespace-nowrap"
+                      title={transaction.description}
+                    >
                       {transaction.description}
                     </td>
                     <td className="py-2 text-right">
@@ -316,6 +319,13 @@ function TransferDrawer({
   const [isLoading, setIsLoading] = useState(false); // Add this line
   const [error, setError] = useState<string | null>(null); // Add this line for error state
 
+  const [isScheduledPayment, setIsScheduledPayment] = useState<
+    "instant" | "scheduled" | "recurring"
+  >("instant");
+  const [scheduledPaymentDate, setScheduledPaymentDate] = useState<
+    string | undefined
+  >(undefined);
+
   const isTransferButtonDisabled = () => {
     return !amount || (transferType === "account" ? !toAccount : !toUser);
   };
@@ -325,6 +335,10 @@ function TransferDrawer({
     setToAccount(undefined);
     setToUser(undefined);
     setTransferType("account");
+
+    setIsScheduledPayment("instant");
+    setScheduledPaymentDate(undefined);
+
     onClose();
   }
 
@@ -423,6 +437,92 @@ function TransferDrawer({
             </Select>
           </div>
         </div>
+        <div className="mb-4 px-4">
+          <Label>Payment Delivery</Label>
+          <div className="flex mt-1 gap-2">
+            <Select
+              value={isScheduledPayment}
+              onValueChange={
+                setIsScheduledPayment as Dispatch<SetStateAction<string>>
+              }
+            >
+              <SelectTrigger className="w-[180px]">
+                <SelectValue placeholder="Select type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={"instant"}>Instant</SelectItem>
+                <SelectItem value={"scheduled"}>Schedule Later</SelectItem>
+                <SelectItem value={"recurring"}>Recurring</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+        </div>
+        {isScheduledPayment === "scheduled" && (
+          <div className="mb-4 px-4">
+            <Label>Payment Date</Label>
+            <div className="flex mt-1 gap-2">
+              {transferType === "user" ? (
+                <UserSelect
+                  value={toUser}
+                  onChange={(value) => setToUser(value)}
+                />
+              ) : (
+                <AccountSelect
+                  value={toAccount}
+                  onChange={(value) => setToAccount(value)}
+                  excludeAccountId={selectedAccount || undefined}
+                />
+              )}
+              <Select
+                value={transferType}
+                onValueChange={
+                  setTransferType as Dispatch<SetStateAction<string>>
+                }
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="account">Account</SelectItem>
+                  <SelectItem value="user">User</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
+        {isScheduledPayment === "recurring" && (
+          <div className="mb-4 px-4">
+            <Label>Recurring Payment</Label>
+            <div className="flex mt-1 gap-2">
+              {transferType === "user" ? (
+                <UserSelect
+                  value={toUser}
+                  onChange={(value) => setToUser(value)}
+                />
+              ) : (
+                <AccountSelect
+                  value={toAccount}
+                  onChange={(value) => setToAccount(value)}
+                  excludeAccountId={selectedAccount || undefined}
+                />
+              )}
+              <Select
+                value={transferType}
+                onValueChange={
+                  setTransferType as Dispatch<SetStateAction<string>>
+                }
+              >
+                <SelectTrigger className="w-[180px]">
+                  <SelectValue placeholder="Select type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="account">Account</SelectItem>
+                  <SelectItem value="user">User</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+        )}
         <DrawerFooter>
           <Button
             variant="outline"
