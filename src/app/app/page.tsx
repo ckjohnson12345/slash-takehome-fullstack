@@ -40,10 +40,10 @@ import {
 } from "@/components/ui/select";
 import { AccountSelect } from "@/components/AccountSelect";
 import { Card } from "@/components/ui/card";
-import type { transferRequestBodySchema } from "../api/account/[accountId]/transfer/route";
 import { Loader2 } from "lucide-react"; // Add this import for the loading spinner
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Add this import for the error alert
 import { Input } from "@/components/ui/input";
+import { transferRequestBodySchema } from "@/lib/payment-functions";
 
 interface AccountWithBalance extends Account {
   balance: string;
@@ -367,9 +367,6 @@ function TransferDrawer({
     const todayEarliestTime = todayMinutes - (todayMinutes % 30) + 30;
     const todayString = dateFormatter.format(today);
 
-    console.log("todayString :>> ", todayString);
-    console.log("todayEarliestTime :>> ", todayEarliestTime);
-
     return {
       date: todayString,
       time: todayEarliestTime,
@@ -435,6 +432,10 @@ function TransferDrawer({
           type: transferType,
           entityId,
           amount: Number(amount), // Convert to cents
+          scheduledPaymentType,
+          scheduledPaymentDate,
+          scheduledPaymentTime,
+          recurringPaymentPeriod,
         })
       );
       handleClose();
@@ -566,12 +567,39 @@ function TransferDrawer({
     setRecurringPaymentPeriod(newPaymentPeriod);
   };
 
+  const testScheduledPaymentHandler = async () => {
+    const entityId = toAccount?.id;
+
+    const req = {
+      type: transferType,
+      entityId,
+      amount: Number(amount), // Convert to cents
+      scheduledPaymentType,
+      scheduledPaymentDate,
+      scheduledPaymentTime,
+      recurringPaymentPeriod,
+    };
+
+    const response = await fetch(`/api/account/${selectedAccount}/transfer`, {
+      method: "PUT",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(req),
+    });
+  };
+
   return (
     <Drawer open={isOpen} onClose={handleClose}>
       <DrawerTitle>Move Money</DrawerTitle>
       <DrawerContent className="max-w-md mx-auto my-auto">
         <DrawerHeader>
           <h2 className="text-2xl font-bold mb-4">Move Money</h2>
+          <div>
+            <Button onClick={testScheduledPaymentHandler}>
+              Add new scheduled payment job
+            </Button>
+          </div>
         </DrawerHeader>
         <div className="mx-4 mb-8">
           {error && (
