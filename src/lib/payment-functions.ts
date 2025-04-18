@@ -12,6 +12,7 @@ export const transferRequestBodySchema = z.object({
   scheduledPaymentDate: z.string().optional(),
   scheduledPaymentTime: z.number().positive().optional(),
   recurringPaymentPeriod: z.enum(["daily", "weekly", "monthly"]).optional(),
+  accountId: z.string().optional(), // TODO: Refactor the `jobs.trigger` function to accept a typed data object, instead of just one `Params` object, which is limited
 });
 
 export const checkSourceAccount = async (accountId: string) => {

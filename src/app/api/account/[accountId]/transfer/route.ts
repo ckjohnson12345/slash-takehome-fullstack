@@ -11,19 +11,29 @@ export async function PUT(
   req: NextRequest,
   { params }: { params: { accountId: string } }
 ) {
-  const today = new Date();
-  const todayISOTokens = today.toISOString().split("-");
-  todayISOTokens[0] = String(Number(todayISOTokens[0]) - 1);
-  console.log("todayISOTokens :>> ", todayISOTokens);
-  const yesterday = todayISOTokens.join("-");
-  console.log("yesterday :>> ", yesterday);
+  const scheduledPaymentDate = "2025-04-18";
+  const scheduledPaymentTime = 1140; // 2:00pm
+
+  const testTransferRequest: (typeof transferRequestBodySchema)["_type"] = {
+    type: "account",
+    entityId: "3b7996d6c9", // "Account 2", for user "Charlie"
+    amount: 100,
+    scheduledPaymentType: "scheduled",
+    scheduledPaymentDate: scheduledPaymentDate,
+    scheduledPaymentTime: scheduledPaymentTime,
+    accountId: params.accountId,
+  };
+
+  const scheduledPaymentDayMS =
+    new Date(scheduledPaymentDate).getTime() + scheduledPaymentTime * 60 * 1000;
+  const scheduledPaymentDay = new Date(scheduledPaymentDayMS);
 
   createScheduledPaymentJob.trigger(
     {
-      params,
+      params: testTransferRequest,
     },
     {
-      startAfter: yesterday,
+      startAfter: scheduledPaymentDay,
     }
   );
 

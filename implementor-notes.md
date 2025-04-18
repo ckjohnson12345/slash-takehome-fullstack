@@ -22,6 +22,7 @@ Notable Git commits:
 - #009:
   - Added `create-schedule-payment.job.ts`
   - Added the ability to pass PgBoss.SendOptions to a job's `trigger()` function, to allow the caller to specify a `startAfter` property to the job options
+- #010: Tested scheduled payment job trigger with `pgBoss` scheduling system; works great!
 
 Notes, and Assumptions:
 

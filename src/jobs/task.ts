@@ -19,6 +19,7 @@ export function createJob<Params extends object, Returns>(jobParams: {
       options?: PgBoss.SendOptions
     ): Promise<string | undefined> {
       await boss.start();
+
       const id = await boss.send({
         name: jobParams.name,
         data: { params: data.params },
