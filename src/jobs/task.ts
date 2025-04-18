@@ -8,86 +8,90 @@ import { jobResults } from "@/db/job-results.db";
  * If you create a job, make sure to register it to the jobs.ts file by exporting it.
  */
 export function createJob<Params extends object, Returns>(jobParams: {
-	name: string;
-	handler: (params: Params) => Promise<Returns>;
-	options?: PgBoss.JobOptions;
+  name: string;
+  handler: (params: Params) => Promise<Returns>;
+  options?: PgBoss.JobOptions;
 }) {
-	return {
-		async trigger(options: {
-			params: Params;
-		}): Promise<string | undefined> {
-			await boss.start();
-			const id = await boss.send({
-				name: jobParams.name,
-				data: { params: options.params },
-				options: jobParams.options,
-			});
-			console.log("job scheduled", id);
+  return {
+    // We need to be able to pass `options`
+    async trigger(
+      data: { params: Params },
+      options?: PgBoss.SendOptions
+    ): Promise<string | undefined> {
+      await boss.start();
 
-			return id ?? undefined;
-		},
+      const id = await boss.send({
+        name: jobParams.name,
+        data: { params: data.params },
+        options: options || jobParams.options,
+      });
 
-		async triggerAndWait(options: {
-			params: Params;
-			/**
-			 * Time in ms. Defaults to 5,000ms
-			 */
-			timeoutOnWait?: number;
-		}): Promise<Returns> {
-			const id = await this.trigger({ params: options.params });
-			if (!id) {
-				throw new Error("Job not scheduled");
-			}
+      console.log("job scheduled", id);
 
-			const startTime = Date.now();
-			const timeout = options.timeoutOnWait ?? 5000;
-			let result: (typeof jobResults)["$inferSelect"] | undefined;
+      return id ?? undefined;
+    },
 
-			do {
-				result = await db.query.jobResults.findFirst({
-					where: (job, { eq }) => eq(job.id, id),
-				});
+    async triggerAndWait(options: {
+      params: Params;
+      /**
+       * Time in ms. Defaults to 5,000ms
+       */
+      timeoutOnWait?: number;
+    }): Promise<Returns> {
+      const id = await this.trigger({ params: options.params });
+      if (!id) {
+        throw new Error("Job not scheduled");
+      }
 
-				if (Date.now() - startTime > timeout) {
-					throw new Error(`Job ${id} timed out after ${timeout}ms`);
-				}
+      const startTime = Date.now();
+      const timeout = options.timeoutOnWait ?? 5000;
+      let result: (typeof jobResults)["$inferSelect"] | undefined;
 
-				await new Promise((resolve) => setTimeout(resolve, 200));
-			} while (!result);
+      do {
+        result = await db.query.jobResults.findFirst({
+          where: (job, { eq }) => eq(job.id, id),
+        });
 
-			return result.response as Returns;
-		},
+        if (Date.now() - startTime > timeout) {
+          throw new Error(`Job ${id} timed out after ${timeout}ms`);
+        }
 
-		async registerToWorker(boss: PgBoss) {
-			await boss.createQueue(jobParams.name);
-			await boss.work(jobParams.name, async (jobs) => {
-				for (const job of jobs) {
-					if (
-						typeof job.data !== "object" ||
-						!job.data ||
-						!("params" in job.data)
-					) {
-						throw new Error("Job data is missing");
-					}
-					console.log(
-						`performing work on ${jobParams.name} - ${job.id}`,
-						JSON.stringify(job.data.params),
-					);
-					const result = await jobParams.handler(job.data.params as Params);
+        await new Promise((resolve) => setTimeout(resolve, 200));
+      } while (!result);
 
-					// Save the job result to the database
-					const insert = await db
-						.insert(jobResults)
-						.values({
-							id: job.id,
-							response: result,
-						})
-						.returning();
-					console.log(insert);
+      return result.response as Returns;
+    },
 
-					return result;
-				}
-			});
-		},
-	};
+    async registerToWorker(boss: PgBoss) {
+      await boss.createQueue(jobParams.name);
+      await boss.work(jobParams.name, async (jobs) => {
+        for (const job of jobs) {
+          if (
+            typeof job.data !== "object" ||
+            !job.data ||
+            !("params" in job.data)
+          ) {
+            throw new Error("Job data is missing");
+          }
+          console.log(
+            `performing work on ${jobParams.name} - ${job.id}`,
+            JSON.stringify(job.data.params)
+          );
+          const result = await jobParams.handler(job.data.params as Params);
+
+          // Save the job result to the database
+          const insert = await db
+            .insert(jobResults)
+            .values({
+              id: job.id,
+              response: result,
+            })
+            .returning();
+          console.log(insert);
+
+          return result;
+        }
+      });
+    },
+  };
 }

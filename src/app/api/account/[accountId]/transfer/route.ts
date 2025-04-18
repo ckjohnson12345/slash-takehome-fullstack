@@ -1,151 +1,124 @@
 import { type NextRequest, NextResponse } from "next/server";
-import { z } from "zod";
-import { db } from "@/db/db";
-import { accounts } from "@/db/accounts.db";
-import { transactions } from "@/db/transactions.db";
-import { eq, and, sum } from "drizzle-orm";
+import { createScheduledPaymentJob } from "@/jobs/create-scheduled-payment.job";
+import {
+  checkSourceAccount,
+  getDestinationAccount,
+  processPayment,
+  transferRequestBodySchema,
+} from "@/lib/payment-functions";
 
-// Define the schema for the request body
-export const transferRequestBodySchema = z.object({
-	type: z.enum(["user", "account"]),
-	entityId: z.string(),
-	amount: z.number().positive(),
-});
+export async function PUT(
+  req: NextRequest,
+  { params }: { params: { accountId: string } }
+) {
+  const scheduledPaymentDate = "2025-04-18";
+  const scheduledPaymentTime = 1140; // 2:00pm
+
+  const testTransferRequest: (typeof transferRequestBodySchema)["_type"] = {
+    type: "account",
+    entityId: "12b17131-33c5-4c3f-a43e-6b39d055a89a", // "Account 2", for user "Charlie"
+    amount: 100,
+    scheduledPaymentType: "scheduled",
+    scheduledPaymentDate: scheduledPaymentDate,
+    scheduledPaymentTime: scheduledPaymentTime,
+    accountId: params.accountId,
+  };
+
+  const scheduledPaymentDayMS =
+    new Date(scheduledPaymentDate).getTime() + scheduledPaymentTime * 60 * 1000;
+  const scheduledPaymentDay = new Date(scheduledPaymentDayMS);
+
+  createScheduledPaymentJob.trigger(
+    {
+      params: testTransferRequest,
+    },
+    {
+      startAfter: scheduledPaymentDay,
+    }
+  );
+
+  return NextResponse.json({ success: true }, { status: 200 });
+}
 
 export async function POST(
-	req: NextRequest,
-	{ params }: { params: { accountId: string } },
+  req: NextRequest,
+  { params }: { params: { accountId: string } }
 ) {
-	try {
-		const { accountId } = params;
-		const body = await req.json();
+  try {
+    const { accountId } = params;
+    const body = await req.json();
 
-		// Validate the request body
-		const { type, entityId, amount } = transferRequestBodySchema.parse(body);
+    // For recurring payments, send the first payment instantly, like you would for instant transfers.
+    if (
+      body.scheduledPaymentType === "instant" ||
+      body.scheduledPaymentType === "recurring"
+    ) {
+      const sourceAccountLookupResult = await checkSourceAccount(accountId);
+      if (sourceAccountLookupResult.error) {
+        return NextResponse.json(sourceAccountLookupResult, { status: 404 });
+      }
+      const sourceAccount = sourceAccountLookupResult.sourceAccount!;
 
-		// Check if the source account exists
-		const sourceAccount = await db
-			.select()
-			.from(accounts)
-			.where(eq(accounts.id, accountId))
-			.limit(1);
+      const destinationAccountResult = await getDestinationAccount(
+        body,
+        sourceAccount
+      );
+      if (destinationAccountResult.error) {
+        return NextResponse.json(destinationAccountResult, {
+          status: 404,
+        });
+      }
 
-		if (sourceAccount.length === 0) {
-			return NextResponse.json(
-				{ error: "Source account not found" },
-				{ status: 404 },
-			);
-		}
+      const processPaymentResult = await processPayment(accountId, body, {
+        name: destinationAccountResult.name!,
+        entityId: destinationAccountResult.entityId!,
+      });
 
-		const destinationAccountId = await (async () => {
-			if (type === "account") {
-				// Check if the destination account exists and belongs to the same user
-				const destinationAccount = await db
-					.select()
-					.from(accounts)
-					.where(eq(accounts.id, entityId))
-					.limit(1);
+      if (processPaymentResult.error) {
+        return NextResponse.json(
+          { error: processPaymentResult.error },
+          { status: 400 }
+        );
+      }
+    }
 
-				if (destinationAccount.length === 0) {
-					return NextResponse.json(
-						{ error: "Destination account not found" },
-						{ status: 404 },
-					);
-				}
+    if (body.scheduledPaymentType === "scheduled") {
+      const d = new Date(body.scheduledPaymentDate);
+      const date = d.getTime();
+      const dateTimeMS = date + body.scheduledPaymentTime * 60 * 1000;
+      const dateTimeMSWithOffset =
+        dateTimeMS + d.getTimezoneOffset() * 60 * 1000;
+      const utcDate = new Date(dateTimeMSWithOffset).toISOString();
 
-				// Assert that the destination account belongs to the same user
-				if (destinationAccount[0].userId !== sourceAccount[0].userId) {
-					return NextResponse.json(
-						{
-							error: "Cannot transfer to an account owned by a different user",
-						},
-						{ status: 403 },
-					);
-				}
+      const jobId = await createScheduledPaymentJob.trigger(
+        {
+          params: {
+            ...body,
+            accountId,
+          },
+        },
+        {
+          startAfter: utcDate,
+        }
+      );
 
-				return {
-					entityId,
-					name: destinationAccount[0].name,
-				};
-			}
+      console.log("scheduled payment jobId :>> ", jobId);
+    }
 
-			// If type is "user", find the user's Primary account
-			const userAccount = await db
-				.select()
-				.from(accounts)
-				.where(and(eq(accounts.userId, entityId), eq(accounts.name, "Primary")))
-				.limit(1);
+    if (body.scheduledPaymentType === "recurring") {
+      // TODO: Implement recurring payments.
+      /**
+       *  Here's how I'd implement the recurring payments part of this assignment.
+       *    - Create a `recurring-payments` table in the DB, associated with a user or account.
+       *       - Should register the amount, recurringPaymentPeriod, and time that the initial payment went through. Recurring payments should be processed at the same time of day the user initiated the initial request
+       *    - Create a daily job, that runs once at 12:01am every day, that goes through the `recurring-payments` table, and creates jobs to run later that day for any recurring payments that need to be scheduled.
+       *      - Should also check the list of jobs scheduled to be processed today, so that we're not duplicating; idempotency is good in job logic.
+       *    - Add an element to the UI showing the user which recurring payments are scheduled for which account
+       */
+    }
 
-			if (userAccount.length === 0) {
-				return NextResponse.json(
-					{ error: "Destination user has no default account" },
-					{ status: 404 },
-				);
-			}
-			return {
-				entityId: userAccount[0].id,
-				name: `Primary (${userAccount[0].userId})`,
-			};
-		})();
-
-		if (destinationAccountId instanceof NextResponse) {
-			return destinationAccountId;
-		}
-
-		// Start a transaction
-		const res = await db.transaction(async (tx) => {
-			// Calculate the source account balance by summing all transactions
-			const balanceResult = await tx
-				.select({ balance: sum(transactions.amountCents) })
-				.from(transactions)
-				.where(and(eq(transactions.accountId, accountId)));
-
-			const sourceBalance = Number(balanceResult[0]?.balance ?? 0);
-
-			console.log({ sourceBalance, amount });
-			if (sourceBalance < amount) {
-				return NextResponse.json(
-					{ error: "Insufficient funds" },
-					{ status: 400 },
-				);
-			}
-
-			const timestamp = new Date();
-			const bookTraceId = crypto.randomUUID();
-			// Create transaction records
-			await tx
-				.insert(transactions)
-				.values([
-					{
-						id: crypto.randomUUID(),
-						traceId: bookTraceId,
-						amountCents: -amount, // Convert dollars to cents
-						description: `Transfer to ${type === "user" ? "user" : "account"} ${
-							destinationAccountId.name
-						}`,
-						type: "book",
-						accountId: accountId,
-						createdAt: timestamp,
-					},
-					{
-						id: crypto.randomUUID(),
-						traceId: bookTraceId,
-						amountCents: amount, // Convert dollars to cents
-						description: `Transfer from account ${accountId}`,
-						type: "book",
-						accountId: destinationAccountId.entityId,
-						createdAt: timestamp,
-					},
-				])
-				.returning();
-		});
-
-		if (res instanceof NextResponse) {
-			return res;
-		}
-
-		return NextResponse.json({ success: true }, { status: 200 });
-	} catch (error) {
-		return NextResponse.json({ error: "Transfer failed" }, { status: 500 });
-	}
+    return NextResponse.json({ success: true }, { status: 200 });
+  } catch (error) {
+    return NextResponse.json({ error: "Transfer failed" }, { status: 500 });
+  }
 }
