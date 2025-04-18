@@ -312,6 +312,12 @@ enum ScheduledPaymentType {
   Recurring = "recurring",
 }
 
+enum RecurringPaymentPeriod {
+  Daily = "daily",
+  Weekly = "weekly",
+  Monthly = "monthly",
+}
+
 function TransferDrawer({
   isOpen,
   onClose,
@@ -375,6 +381,8 @@ function TransferDrawer({
   const [scheduledPaymentDate, setScheduledPaymentDate] = useState<string>(
     SCHEDULED_PAYMENT_DEFAULTS.date
   );
+  const [recurringPaymentPeriod, setRecurringPaymentPeriod] =
+    useState<RecurringPaymentPeriod>(RecurringPaymentPeriod.Daily);
 
   // Defined in increments of 30 minutes; 0 === 12:00pm, 120 === 2:00am, etc.
   const [scheduledPaymentTime, setScheduledPaymentTime] = useState<number>(
@@ -406,6 +414,7 @@ function TransferDrawer({
     setScheduledPaymentType(ScheduledPaymentType.Instant);
     setScheduledPaymentDate(SCHEDULED_PAYMENT_DEFAULTS.date);
     setScheduledPaymentTime(SCHEDULED_PAYMENT_DEFAULTS.time);
+    setRecurringPaymentPeriod(RecurringPaymentPeriod.Daily);
     setValidations({});
 
     onClose();
@@ -541,8 +550,20 @@ function TransferDrawer({
     // When scheduled payment type changes, reset related fields to their default value
     setScheduledPaymentDate(SCHEDULED_PAYMENT_DEFAULTS.date);
     setScheduledPaymentTime(SCHEDULED_PAYMENT_DEFAULTS.time);
+    setRecurringPaymentPeriod(RecurringPaymentPeriod.Daily);
+
+    // Clear validations for `scheduledPaymentDate`
+    const newValidations = { ...validations };
+    delete newValidations["scheduledPaymentDate"];
+    setValidations(newValidations);
 
     setScheduledPaymentType(newPaymentType as ScheduledPaymentType);
+  };
+
+  const handleRecurringPaymentPeriodChange = (
+    newPaymentPeriod: RecurringPaymentPeriod
+  ) => {
+    setRecurringPaymentPeriod(newPaymentPeriod);
   };
 
   return (
@@ -662,35 +683,30 @@ function TransferDrawer({
         )}
         {scheduledPaymentType === ScheduledPaymentType.Recurring && (
           <div className="mb-4 px-4">
-            <Label>Recurring Payment</Label>
-            <div className="flex mt-1 gap-2">
-              {transferType === "user" ? (
-                <UserSelect
-                  value={toUser}
-                  onChange={(value) => setToUser(value)}
-                />
-              ) : (
-                <AccountSelect
-                  value={toAccount}
-                  onChange={(value) => setToAccount(value)}
-                  excludeAccountId={selectedAccount || undefined}
-                />
-              )}
-              <Select
-                value={transferType}
-                onValueChange={
-                  setTransferType as Dispatch<SetStateAction<string>>
-                }
-              >
-                <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Select type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="account">Account</SelectItem>
-                  <SelectItem value="user">User</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <Label>Recurring Payment Period</Label>
+            <p className="text-xs mb-4">
+              First payment will occur immediately, then repeat for the
+              specified period.
+            </p>
+            <Select
+              value={recurringPaymentPeriod}
+              onValueChange={handleRecurringPaymentPeriodChange}
+            >
+              <SelectTrigger>
+                <SelectValue placeholder="Select type" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={RecurringPaymentPeriod.Daily}>
+                  Daily
+                </SelectItem>
+                <SelectItem value={RecurringPaymentPeriod.Weekly}>
+                  Weekly
+                </SelectItem>
+                <SelectItem value={RecurringPaymentPeriod.Monthly}>
+                  Monthly
+                </SelectItem>
+              </SelectContent>
+            </Select>
           </div>
         )}
         <DrawerFooter>
