@@ -23,15 +23,12 @@ export const createScheduledPaymentJob = createJob({
     if (sourceAccountLookupResult.error) {
       return sourceAccountLookupResult;
     }
-    // console.log("sourceAccountLookupResult :>> ", sourceAccountLookupResult);
     const sourceAccount = sourceAccountLookupResult.sourceAccount!;
 
     const destinationAccountResult = await getDestinationAccount(
       transferRequest,
       sourceAccount
     );
-
-    // console.log("destinationAccountresult :>> ", destinationAccountResult);
 
     if (destinationAccountResult.error) {
       return destinationAccountResult;
@@ -51,8 +48,6 @@ export const createScheduledPaymentJob = createJob({
         entityId: destinationAccountResult.entityId!,
       }
     );
-
-    console.log("processPaymentResult :>> ", processPaymentResult);
 
     if (processPaymentResult.error) {
       return processPayment;
