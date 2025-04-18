@@ -13,6 +13,8 @@ Notable Git commits:
 - #001: Added user name and ID to the `app` dashboard, to clarify a little bit where we're at in the UI.
 - #002: Fixed an issue with the nav bar; hovering over the "Admin" option triggers the :hover state when the user is hovering the broader nav link box (beyond the nav link label), but only activates the link when the text itself is clicked.
 - #004: Added placeholder state and UI elements for instant, scheduled, and recurring payments on the `app` dashboard Move Money modal.
+- #005: Added form logic for `setScheduledPaymentDate` and `setScheduledPaymentTime` fields. Added validation mechanism for `setScheduledPaymentDate`, since it allows arbitrary user date input via the <input type="date"> field. Added various datetime formatting functions. Clear scheduled payment fields when Transfer Payment drawer is closed. Finally, update `scheduledPaymentTime` options when the `scheduledPaymentDate` field is changed to reflect valid available scheduling times.
+- #006: Added recurring payments section, including UI and functionality for the `recurringPaymentPeriod` field
 
 -
 
