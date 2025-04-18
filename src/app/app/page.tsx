@@ -1,6 +1,13 @@
 "use client";
 
-import { type Dispatch, type SetStateAction, useEffect, useState } from "react";
+import {
+  type Dispatch,
+  type SetStateAction,
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
 import { useAuthState } from "@/contexts/AuthStateContext";
 import type { User } from "@/db/users.db";
 import type { Account } from "@/db/accounts.db";
@@ -18,6 +25,7 @@ import {
   DrawerContent,
   DrawerHeader,
   DrawerFooter,
+  DrawerTitle,
 } from "@/components/ui/drawer"; // Ensure DrawerBody is correctly exported
 import { Button } from "@/components/ui/button"; // Correct casing to match other imports
 import { Label } from "@/components/ui/label";
@@ -35,6 +43,7 @@ import { Card } from "@/components/ui/card";
 import type { transferRequestBodySchema } from "../api/account/[accountId]/transfer/route";
 import { Loader2 } from "lucide-react"; // Add this import for the loading spinner
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"; // Add this import for the error alert
+import { Input } from "@/components/ui/input";
 
 interface AccountWithBalance extends Account {
   balance: string;
@@ -46,6 +55,10 @@ interface AppState {
   loading: boolean;
   selectedAccount: string | null;
   transactions: (typeof transactions)["$inferSelect"][] | undefined;
+}
+
+interface Validation {
+  [key: string]: string;
 }
 
 export default function AppPage() {
@@ -146,8 +159,6 @@ export default function AppPage() {
       </div>
     );
   }
-
-  console.log("appState.user :>> ", appState.user);
 
   const maximumBalanceForSelectedAccount = (() => {
     const balance = appState.accounts.find(
@@ -295,6 +306,12 @@ export default function AppPage() {
   );
 }
 
+enum ScheduledPaymentType {
+  Instant = "instant",
+  Scheduled = "scheduled",
+  Recurring = "recurring",
+}
+
 function TransferDrawer({
   isOpen,
   onClose,
@@ -319,15 +336,65 @@ function TransferDrawer({
   const [isLoading, setIsLoading] = useState(false); // Add this line
   const [error, setError] = useState<string | null>(null); // Add this line for error state
 
-  const [isScheduledPayment, setIsScheduledPayment] = useState<
-    "instant" | "scheduled" | "recurring"
-  >("instant");
-  const [scheduledPaymentDate, setScheduledPaymentDate] = useState<
-    string | undefined
-  >(undefined);
+  /* Begin scheduled payments code */
+
+  const dateFormatter = useMemo(() => {
+    return new Intl.DateTimeFormat("en-CA", {
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+    });
+  }, []);
+
+  const timeFormatter = useMemo(() => {
+    return new Intl.DateTimeFormat("en-CA", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    });
+  }, []);
+
+  // Get defaults for scheduledPaymentDate and scheduledPaymentTime
+  const SCHEDULED_PAYMENT_DEFAULTS = useMemo(() => {
+    const today = new Date();
+    const todayMinutes = today.getHours() * 60 + today.getMinutes();
+    const todayEarliestTime = todayMinutes - (todayMinutes % 30) + 30;
+    const todayString = dateFormatter.format(today);
+
+    console.log("todayString :>> ", todayString);
+    console.log("todayEarliestTime :>> ", todayEarliestTime);
+
+    return {
+      date: todayString,
+      time: todayEarliestTime,
+    };
+  }, []);
+
+  const [scheduledPaymentType, setScheduledPaymentType] =
+    useState<ScheduledPaymentType>(ScheduledPaymentType.Instant);
+  const [scheduledPaymentDate, setScheduledPaymentDate] = useState<string>(
+    SCHEDULED_PAYMENT_DEFAULTS.date
+  );
+
+  // Defined in increments of 30 minutes; 0 === 12:00pm, 120 === 2:00am, etc.
+  const [scheduledPaymentTime, setScheduledPaymentTime] = useState<number>(
+    SCHEDULED_PAYMENT_DEFAULTS.time
+  );
+
+  const [validations, setValidations] = useState<Validation>({});
 
   const isTransferButtonDisabled = () => {
-    return !amount || (transferType === "account" ? !toAccount : !toUser);
+    const hasNoAmount = !amount;
+    const hasNoTargetAccount = transferType === "account" && !toAccount;
+    const hasNoTargetUser = transferType !== "account" && !toUser;
+    const hasValidationErrors = Object.entries(validations).length > 0;
+
+    return (
+      hasNoAmount ||
+      hasNoTargetAccount ||
+      hasNoTargetUser ||
+      hasValidationErrors
+    );
   };
 
   function handleClose() {
@@ -336,8 +403,10 @@ function TransferDrawer({
     setToUser(undefined);
     setTransferType("account");
 
-    setIsScheduledPayment("instant");
-    setScheduledPaymentDate(undefined);
+    setScheduledPaymentType(ScheduledPaymentType.Instant);
+    setScheduledPaymentDate(SCHEDULED_PAYMENT_DEFAULTS.date);
+    setScheduledPaymentTime(SCHEDULED_PAYMENT_DEFAULTS.time);
+    setValidations({});
 
     onClose();
   }
@@ -374,8 +443,111 @@ function TransferDrawer({
     }
   };
 
+  const [earliestPaymentDate, latestPaymentDate] = useMemo(() => {
+    // Get the earliest available date for schedule payment datepicker
+    const today = new Date();
+    const earliestPaymentDate = SCHEDULED_PAYMENT_DEFAULTS.date;
+
+    const latestPaymentDate = earliestPaymentDate
+      .split("-")
+      .map((token, index) => {
+        if (index === 0) {
+          // Increment the year by 1
+          const year = Number(token);
+          return String(year + 1);
+        } else {
+          return token;
+        }
+      })
+      .join("-");
+
+    return [earliestPaymentDate, latestPaymentDate];
+  }, []);
+
+  const handlePaymentDateBlur = (event: React.FocusEvent<HTMLInputElement>) => {
+    const dateInput = event.target.value;
+
+    validatePaymentDate(dateInput);
+  };
+
+  const validatePaymentDate = (dateInput: string) => {
+    let validationMessage: string | undefined = undefined;
+
+    // Check incoming date Input for blank state, minimum date, and maximum date.
+    // Note: We can compare these date strings directly, since ISO date strings are lexographically sortable!
+    if (
+      scheduledPaymentType === ScheduledPaymentType.Scheduled &&
+      (typeof dateInput === "undefined" || dateInput === "")
+    ) {
+      validationMessage = `Payment Date is required`;
+    } else if (dateInput < earliestPaymentDate) {
+      validationMessage = `Scheduled payment cannot occur before ${earliestPaymentDate}`;
+    } else if (dateInput === earliestPaymentDate) {
+      // Set the time field to be after the current time, in 30-minute increments
+    } else if (dateInput > latestPaymentDate) {
+      validationMessage = `Scheduled payment cannot occur after ${latestPaymentDate}`;
+    }
+
+    if (validationMessage) {
+      setValidations({
+        ...validations,
+        scheduledPaymentDate: validationMessage,
+      });
+    } else if (typeof validations["scheduledPaymentDate"] !== "undefined") {
+      const newValidations = { ...validations };
+      delete newValidations["scheduledPaymentDate"];
+      setValidations(newValidations);
+    }
+  };
+
+  const handlePaymentDateChange = useCallback(
+    (event: React.ChangeEvent<HTMLInputElement>) => {
+      const dateInput = event.target.value;
+      validatePaymentDate(dateInput);
+      setScheduledPaymentDate(dateInput);
+    },
+    [earliestPaymentDate, latestPaymentDate, validations, setValidations]
+  );
+
+  const scheduledPaymentTimeOptions = useMemo(() => {
+    let selectElements = [];
+
+    const startingTime =
+      scheduledPaymentDate === SCHEDULED_PAYMENT_DEFAULTS.date
+        ? SCHEDULED_PAYMENT_DEFAULTS.time
+        : 0;
+
+    for (var i = startingTime; i < 1440; i = i + 30) {
+      const time = new Date(0, 0, 0, 0, i);
+      const timeLabel = timeFormatter.format(time);
+
+      selectElements.push(
+        <SelectItem key={String(i)} value={String(i)}>
+          {timeLabel}
+        </SelectItem>
+      );
+    }
+
+    setScheduledPaymentTime(startingTime);
+
+    return selectElements;
+  }, [scheduledPaymentDate]);
+
+  const handleScheduledPaymentTimeChange = (newTime: string) => {
+    setScheduledPaymentTime(Number(newTime));
+  };
+
+  const handleScheduledPaymentTypeChange = (newPaymentType: string) => {
+    // When scheduled payment type changes, reset related fields to their default value
+    setScheduledPaymentDate(SCHEDULED_PAYMENT_DEFAULTS.date);
+    setScheduledPaymentTime(SCHEDULED_PAYMENT_DEFAULTS.time);
+
+    setScheduledPaymentType(newPaymentType as ScheduledPaymentType);
+  };
+
   return (
     <Drawer open={isOpen} onClose={handleClose}>
+      <DrawerTitle>Move Money</DrawerTitle>
       <DrawerContent className="max-w-md mx-auto my-auto">
         <DrawerHeader>
           <h2 className="text-2xl font-bold mb-4">Move Money</h2>
@@ -441,56 +613,54 @@ function TransferDrawer({
           <Label>Payment Delivery</Label>
           <div className="flex mt-1 gap-2">
             <Select
-              value={isScheduledPayment}
-              onValueChange={
-                setIsScheduledPayment as Dispatch<SetStateAction<string>>
-              }
+              value={scheduledPaymentType}
+              onValueChange={handleScheduledPaymentTypeChange}
             >
-              <SelectTrigger className="w-[180px]">
+              <SelectTrigger>
                 <SelectValue placeholder="Select type" />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value={"instant"}>Instant</SelectItem>
-                <SelectItem value={"scheduled"}>Schedule Later</SelectItem>
-                <SelectItem value={"recurring"}>Recurring</SelectItem>
+                <SelectItem value={ScheduledPaymentType.Instant}>
+                  Instant
+                </SelectItem>
+                <SelectItem value={ScheduledPaymentType.Scheduled}>
+                  Schedule Later
+                </SelectItem>
+                <SelectItem value={ScheduledPaymentType.Recurring}>
+                  Recurring
+                </SelectItem>
               </SelectContent>
             </Select>
           </div>
         </div>
-        {isScheduledPayment === "scheduled" && (
+        {scheduledPaymentType === ScheduledPaymentType.Scheduled && (
           <div className="mb-4 px-4">
             <Label>Payment Date</Label>
             <div className="flex mt-1 gap-2">
-              {transferType === "user" ? (
-                <UserSelect
-                  value={toUser}
-                  onChange={(value) => setToUser(value)}
-                />
-              ) : (
-                <AccountSelect
-                  value={toAccount}
-                  onChange={(value) => setToAccount(value)}
-                  excludeAccountId={selectedAccount || undefined}
-                />
-              )}
+              <Input
+                type="date"
+                value={scheduledPaymentDate ?? ""}
+                min={earliestPaymentDate}
+                max={latestPaymentDate}
+                placeholder={"MM/DD/YYYY"}
+                name="scheduledPaymentDate"
+                validation={validations["scheduledPaymentDate"]}
+                onBlur={handlePaymentDateBlur}
+                onChange={handlePaymentDateChange}
+              ></Input>
               <Select
-                value={transferType}
-                onValueChange={
-                  setTransferType as Dispatch<SetStateAction<string>>
-                }
+                value={String(scheduledPaymentTime)}
+                onValueChange={handleScheduledPaymentTimeChange}
               >
                 <SelectTrigger className="w-[180px]">
-                  <SelectValue placeholder="Select type" />
+                  <SelectValue placeholder="Time of delivery" />
                 </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="account">Account</SelectItem>
-                  <SelectItem value="user">User</SelectItem>
-                </SelectContent>
+                <SelectContent>{scheduledPaymentTimeOptions}</SelectContent>
               </Select>
             </div>
           </div>
         )}
-        {isScheduledPayment === "recurring" && (
+        {scheduledPaymentType === ScheduledPaymentType.Recurring && (
           <div className="mb-4 px-4">
             <Label>Recurring Payment</Label>
             <div className="flex mt-1 gap-2">
