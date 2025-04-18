@@ -595,11 +595,12 @@ function TransferDrawer({
       <DrawerContent className="max-w-md mx-auto my-auto">
         <DrawerHeader>
           <h2 className="text-2xl font-bold mb-4">Move Money</h2>
-          <div>
+          {/* Remove these comments to add the test scheduled payment button */}
+          {/* <div>
             <Button onClick={testScheduledPaymentHandler}>
               Add new scheduled payment job
             </Button>
-          </div>
+          </div> */}
         </DrawerHeader>
         <div className="mx-4 mb-8">
           {error && (

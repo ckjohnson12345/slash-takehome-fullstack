@@ -34,9 +34,10 @@ Notes, and Assumptions:
   - Obviously, payments cannot be scheduled before the current date and time.
 - We've added an element that lets you specify the time of delivery as well, within the date selected.
   - One note here that represents a hairy problem; **What is the timezone in which these scheduled payments get executed?**
-    - From a system POV, the easiest thing will be to standardized all payment schedules.
-    - But from the user's POV, the user is likely expecting the date/time they submit in the schedule payment form will represent _their_ timezone.
-    - So, a future implementation might translate the user-supplied time from that user's timezone into universal (UTC) time.
+    - ~~From a system POV, the easiest thing will be to standardized all payment schedules.~~
+    - ~~But from the user's POV, the user is likely expecting the date/time they submit in the schedule payment form will represent _their_ timezone.~~
+    - ~~So, a future implementation might translate the user-supplied time from that user's timezone into universal (UTC) time.~~
+    - Note: This has been fixed! Wasn't too bad, actually.
 - I spent too much time on validation...
   - Still could be improved!
   - Definitely something you want a whole-of-app solution for; I just figured not having validation here made this too painful to use, so I hacked together a solution that does it somewhat well...
