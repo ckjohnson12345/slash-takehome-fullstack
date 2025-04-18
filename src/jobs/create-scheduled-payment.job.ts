@@ -1,4 +1,9 @@
-import { transferRequestBodySchema } from "@/lib/payment-functions";
+import {
+  checkSourceAccount,
+  getDestinationAccount,
+  processPayment,
+  transferRequestBodySchema,
+} from "@/lib/payment-functions";
 import { createJob } from "./task";
 
 export const createScheduledPaymentJob = createJob({
@@ -12,12 +17,45 @@ export const createScheduledPaymentJob = createJob({
       transferRequest
     );
 
-    const error = null;
+    const { accountId } = transferRequest;
 
-    if (error) {
-      return {
-        error: error,
-      };
+    const sourceAccountLookupResult = await checkSourceAccount(accountId!);
+    if (sourceAccountLookupResult.error) {
+      return sourceAccountLookupResult;
+    }
+    // console.log("sourceAccountLookupResult :>> ", sourceAccountLookupResult);
+    const sourceAccount = sourceAccountLookupResult.sourceAccount!;
+
+    const destinationAccountResult = await getDestinationAccount(
+      transferRequest,
+      sourceAccount
+    );
+
+    // console.log("destinationAccountresult :>> ", destinationAccountResult);
+
+    if (destinationAccountResult.error) {
+      return destinationAccountResult;
+    }
+
+    console.log("processing payment.... :>> ", {
+      accountId,
+      transferRequest,
+      destinationAccountResult,
+    });
+
+    const processPaymentResult = await processPayment(
+      accountId!,
+      transferRequest,
+      {
+        name: destinationAccountResult.name!,
+        entityId: destinationAccountResult.entityId!,
+      }
+    );
+
+    console.log("processPaymentResult :>> ", processPaymentResult);
+
+    if (processPaymentResult.error) {
+      return processPayment;
     }
 
     return {

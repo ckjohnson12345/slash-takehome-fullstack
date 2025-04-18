@@ -3,6 +3,7 @@ import { db } from "@/db/db";
 import { eq, and, sum } from "drizzle-orm";
 import { z } from "zod";
 import { transactions } from "@/db/transactions.db";
+import { randomUUID } from "crypto";
 
 export const transferRequestBodySchema = z.object({
   type: z.enum(["user", "account"]),
@@ -100,39 +101,39 @@ export const processPayment = async (
         .where(and(eq(transactions.accountId, accountId)));
 
       const sourceBalance = Number(balanceResult[0]?.balance ?? 0);
-
-      console.log({ sourceBalance, amount });
       if (sourceBalance < amount) {
         return { error: "Insufficient funds" };
       }
 
       const timestamp = new Date();
-      const bookTraceId = crypto.randomUUID();
+      const bookTraceId = randomUUID();
+
       // Create transaction records
+      const sourceAccountTransaction = {
+        id: randomUUID(),
+        traceId: bookTraceId,
+        amountCents: -amount, // Convert dollars to cents
+        description: `Transfer to ${type === "user" ? "user" : "account"} ${
+          destinationAccount.name
+        }`,
+        type: "book",
+        accountId: accountId,
+        createdAt: timestamp,
+      };
+
+      const destinationAccountTransaction = {
+        id: randomUUID(),
+        traceId: bookTraceId,
+        amountCents: amount, // Convert dollars to cents
+        description: `Transfer from account ${accountId}`,
+        type: "book",
+        accountId: destinationAccount.entityId,
+        createdAt: timestamp,
+      };
+
       await tx
         .insert(transactions)
-        .values([
-          {
-            id: crypto.randomUUID(),
-            traceId: bookTraceId,
-            amountCents: -amount, // Convert dollars to cents
-            description: `Transfer to ${type === "user" ? "user" : "account"} ${
-              destinationAccount.name
-            }`,
-            type: "book",
-            accountId: accountId,
-            createdAt: timestamp,
-          },
-          {
-            id: crypto.randomUUID(),
-            traceId: bookTraceId,
-            amountCents: amount, // Convert dollars to cents
-            description: `Transfer from account ${accountId}`,
-            type: "book",
-            accountId: destinationAccount.entityId,
-            createdAt: timestamp,
-          },
-        ])
+        .values([sourceAccountTransaction, destinationAccountTransaction])
         .returning();
 
       return {

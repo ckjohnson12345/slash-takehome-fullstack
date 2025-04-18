@@ -23,6 +23,9 @@ Notable Git commits:
   - Added `create-schedule-payment.job.ts`
   - Added the ability to pass PgBoss.SendOptions to a job's `trigger()` function, to allow the caller to specify a `startAfter` property to the job options
 - #010: Tested scheduled payment job trigger with `pgBoss` scheduling system; works great!
+- #011:
+  - Implemented payment transactions in the `create-scheduled-payment` job handler. Works great!
+  - Fixed a very annoying bug; calling `crypto.randomUUID()` in the context of a `pgBoss` job handler returns an undefined result. Fix this by importing `{randomUUID}` explicitly in the import list.
 
 Notes, and Assumptions:
 

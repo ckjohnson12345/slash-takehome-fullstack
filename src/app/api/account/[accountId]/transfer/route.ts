@@ -16,7 +16,7 @@ export async function PUT(
 
   const testTransferRequest: (typeof transferRequestBodySchema)["_type"] = {
     type: "account",
-    entityId: "3b7996d6c9", // "Account 2", for user "Charlie"
+    entityId: "12b17131-33c5-4c3f-a43e-6b39d055a89a", // "Account 2", for user "Charlie"
     amount: 100,
     scheduledPaymentType: "scheduled",
     scheduledPaymentDate: scheduledPaymentDate,
