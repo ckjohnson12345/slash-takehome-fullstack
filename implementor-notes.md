@@ -26,6 +26,7 @@ Notable Git commits:
 - #011:
   - Implemented payment transactions in the `create-scheduled-payment` job handler. Works great!
   - Fixed a very annoying bug; calling `crypto.randomUUID()` in the context of a `pgBoss` job handler returns an undefined result. Fix this by importing `{randomUUID}` explicitly in the import list.
+- #013: Added logic to support processing scheduled payments through the normal `/transfer` route. Everything works swimmingly!
 
 Notes, and Assumptions:
 
